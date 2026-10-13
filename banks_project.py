@@ -22,12 +22,13 @@ def log_progress(message):
         f.write(now + " : " + message + "\n")
 
 # EXTRACT : récupère sur la page web le nom et la capitalisation (USD) de chaque banque, et renvoie un DataFrame
-def extract(url, table_attribs):
+def extract(url, table_attribs=None):
+    if table_attribs is None:
+        table_attribs = ["Name", "MC_USD_Billion"]
     html_page = requests.get(url).text
     soup = BeautifulSoup(html_page, "html.parser")
-    df = pd.DataFrame(columns=table_attribs)
-    tables = soup.find_all("tbody")
-    rows = tables[0].find_all("tr")
+    rows = soup.find_all("tbody")[0].find_all("tr")
+    data = []
     for row in rows:
         col = row.find_all("td")
         if len(col) != 0:
@@ -36,12 +37,12 @@ def extract(url, table_attribs):
                 name = links[1]["title"]
             else:
                 name = col[1].get_text(strip=True)
-            mc = float(col[2].get_text(strip=True).replace("\n", "").replace(",", ""))
-            df = pd.concat(
-                [df, pd.DataFrame({"Name": [name], "MC_USD_Billion": [mc]})],
-                ignore_index=True,
-            )
+            mc_text = col[2].get_text(strip=True).replace("\n", "").replace(",", "")
+            mc_usd_billion = round(float(mc_text), 2)
+            data.append({"Name": name, "MC_USD_Billion": mc_usd_billion})
+    df = pd.DataFrame(data, columns=table_attribs)
     return df
+
 
 # TRANSFORM : lit les taux de change du CSV et ajoute les colonnes de capitalisation en GBP, EUR et INR
 def transform(df, csv_path):
@@ -56,11 +57,14 @@ def transform(df, csv_path):
 
 def load_to_csv(df, output_path):
     df.to_csv(output_path, index=False)
+    log_progress("Data saved to CSV file")
+
 
 # LOAD 2/2: pour sauvegarde le DataFrame dans une table de la base de données SQLite
-
 def load_to_db(df, sql_connection, table_name):
     df.to_sql(table_name, sql_connection, if_exists="replace", index=False)
+    log_progress("Data loaded to Database as a table, Executing queries")
+
 # Exécute une requête SQL sur la base, affiche le résultat et note l'exécution dans le log
 
 def run_query(query_statement, sql_connection):
